@@ -23,6 +23,11 @@
 </head>
 <body class="text-slate-800 flex flex-col min-h-screen">
 
+    <!-- Connection Status (Top Center) -->
+    <div id="global-connection-status" class="fixed top-0 left-1/2 transform -translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-b-xl shadow-md z-[100] transition-transform duration-500 flex items-center gap-1.5 translate-y-0">
+        <i class="fa-solid fa-spinner fa-spin"></i> กำลังเชื่อมต่อระบบ...
+    </div>
+
     <!-- Toast Container -->
     <div id="toast-container" class="fixed top-4 right-4 z-[70] flex flex-col gap-3 pointer-events-none"></div>
 
@@ -92,6 +97,33 @@
         let timerInterval = null;
         let db, auth, appId, mainDocRef;
         let isFirebaseReady = false;
+
+        // --- CONNECTION STATUS ---
+        window.updateConnectionStatus = (status) => {
+            const el = document.getElementById('global-connection-status');
+            if (!el) return;
+            
+            if (status === 'online') {
+                el.className = "fixed top-0 left-1/2 transform -translate-x-1/2 bg-emerald-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-b-xl shadow-md z-[100] transition-transform duration-500 flex items-center gap-1.5 translate-y-0";
+                el.innerHTML = '<i class="fa-solid fa-wifi"></i> ออนไลน์';
+                
+                // เลื่อนเก็บขึ้นไปเมื่อเชื่อมต่อสำเร็จ จะได้ไม่บังจอ
+                setTimeout(() => {
+                    if (isFirebaseReady && navigator.onLine) {
+                        el.classList.replace('translate-y-0', '-translate-y-full');
+                    }
+                }, 2500);
+            } else if (status === 'offline') {
+                el.className = "fixed top-0 left-1/2 transform -translate-x-1/2 bg-rose-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-b-xl shadow-md z-[100] transition-transform duration-500 flex items-center gap-1.5 translate-y-0";
+                el.innerHTML = '<i class="fa-solid fa-wifi-slash"></i> ขาดการเชื่อมต่ออินเทอร์เน็ต!';
+            } else {
+                el.className = "fixed top-0 left-1/2 transform -translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-b-xl shadow-md z-[100] transition-transform duration-500 flex items-center gap-1.5 translate-y-0";
+                el.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังเชื่อมต่อระบบ...';
+            }
+        };
+
+        window.addEventListener('online', () => updateConnectionStatus(isFirebaseReady ? 'online' : 'connecting'));
+        window.addEventListener('offline', () => updateConnectionStatus('offline'));
 
         // --- TOAST NOTIFICATION ---
         window.showToast = (title, desc, isAlert = false) => {
@@ -181,8 +213,10 @@
 
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        isFirebaseReady = true;
                         onSnapshot(mainDocRef, (snapshot) => {
+                            isFirebaseReady = true;
+                            updateConnectionStatus('online'); // แจ้งว่าเชื่อมต่อสำเร็จ
+                            
                             if (snapshot.exists()) {
                                 const data = snapshot.data();
                                 state.scores = data.scores || state.scores;
@@ -192,6 +226,9 @@
                                 state.stationClosed = data.stationClosed || {};
                                 if(state.activeTab !== 'login') renderApp();
                             }
+                        }, (error) => {
+                            console.error("Firebase Stream Error", error);
+                            updateConnectionStatus('offline'); // แจ้งเมื่อการเชื่อมต่อหลุด
                         });
                     }
                 });
@@ -555,6 +592,7 @@
         }
 
         window.onload = () => {
+            updateConnectionStatus(navigator.onLine ? 'connecting' : 'offline');
             initDefaultStaff();
             renderApp();
         };
