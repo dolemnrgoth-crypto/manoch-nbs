@@ -1,71 +1,564 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>มาโนชญ์ ชาวบางงาม | ผู้สมัครนายกเทศมนตรี</title>
-<style>
-body{font-family:Tahoma,Arial,sans-serif;margin:0;background:#f5f5f5;color:#333}
-header{background:#d71920;color:white;padding:40px 20px;text-align:center}
-h1{margin:0;font-size:36px}
-section{max-width:900px;margin:auto;padding:30px 20px}
-.card{background:white;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 5px 15px rgba(0,0,0,0.08)}
-.policy{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px}
-footer{background:#222;color:white;text-align:center;padding:20px}
-a.btn{display:inline-block;background:#d71920;color:white;padding:12px 20px;border-radius:6px;text-decoration:none;margin-top:10px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบรายงานผลการนับคะแนน (สำหรับเจ้าหน้าที่)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* รองรับจอที่มีรอยแหว่งด้านล่าง (iPhone) */
+        .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); }
+        .pt-safe { padding-top: env(safe-area-inset-top); }
+        /* ซ่อนลูกศรขึ้นลงในช่องตัวเลข */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
 </head>
-<body>
+<body class="text-slate-800 flex flex-col min-h-screen">
 
-<header>
-<h1>มาโนชญ์ ชาวบางงาม</h1>
-<p>ผู้สมัครนายกเทศมนตรีตำบลหนองบัวศาลา</p>
-<p>พรรคประชาชน</p>
-</header>
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[70] flex flex-col gap-3 pointer-events-none"></div>
 
-<section>
+    <!-- Header -->
+    <header id="main-header" class="bg-indigo-700 text-white shadow-md sticky top-0 z-40 pt-safe hidden">
+        <div class="px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                    <i class="fa-solid fa-clipboard-user text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm leading-tight" id="header-title">ระบบบันทึกคะแนน</h1>
+                    <p class="text-indigo-200 text-xs" id="header-subtitle">เทศบาลตำบลหนองบัวศาลา</p>
+                </div>
+            </div>
+            <button onclick="logout()" class="text-indigo-100 hover:text-white bg-indigo-800 hover:bg-rose-500 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-inner flex items-center gap-1">
+                <i class="fa-solid fa-power-off"></i> ออกระบบ
+            </button>
+        </div>
+        <!-- Timer Bar -->
+        <div id="staff-timer-display" class="w-full transition-colors duration-300"></div>
+    </header>
 
-<div class="card">
-<h2>เกี่ยวกับผู้สมัคร</h2>
-<p>
-มุ่งมั่นพัฒนาตำบลหนองบัวศาลาให้เป็นเมืองที่น่าอยู่
-ส่งเสริมคุณภาพชีวิต เศรษฐกิจท้องถิ่น และโครงสร้างพื้นฐาน
-เพื่ออนาคตที่ดีของประชาชนทุกคน
-</p>
-</div>
+    <!-- Main Content -->
+    <main id="main-content" class="flex-1 w-full max-w-md mx-auto relative z-10 flex flex-col"></main>
 
-<div class="card">
-<h2>นโยบายหลัก 3D</h2>
-<div class="policy">
-<div>
-<h3>เมืองดี</h3>
-<p>พัฒนาระบบสาธารณูปโภค ถนน ไฟส่องสว่าง และความปลอดภัยในชุมชน</p>
-</div>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-<div>
-<h3>ชีวิตดี</h3>
-<p>ยกระดับคุณภาพชีวิต การศึกษา สาธารณสุข และสวัสดิการประชาชน</p>
-</div>
+        // =========================================================================
+        // 🔴 ตั้งค่า FIREBASE 
+        // =========================================================================
+        const myFirebaseConfig = {
+            apiKey: "AIzaSyCrj5dW6fphwWjEQONUmWYzsb32K13cOU4",
+            authDomain: "nong-bua-sala-election.firebaseapp.com",
+            projectId: "nong-bua-sala-election",
+            storageBucket: "nong-bua-sala-election.firebasestorage.app",
+            messagingSenderId: "750905897139",
+            appId: "1:750905897139:web:ea1e382801c477fc2cc0c6"
+        };
+        // =========================================================================
 
-<div>
-<h3>อนาคตดี</h3>
-<p>สนับสนุนเศรษฐกิจท้องถิ่น สร้างโอกาสให้คนรุ่นใหม่</p>
-</div>
-</div>
-</div>
+        // --- STATE MANAGEMENT ---
+        let state = {
+            activeTab: 'login',
+            currentUser: null,
+            isVotingOpen: true, 
+            stationLastUpdated: {}, 
+            stationSubmitCount: {}, 
+            stationClosed: {}, 
+            mayorCandidates: [
+                { id: 'm1', number: 1, name: 'นายจำเริญ เปล้ากระโทก' },
+                { id: 'm2', number: 2, name: 'นายมาโนชญ์ ชาวบางงาม' },
+            ],
+            councilCandidates: {
+                1: Array.from({ length: 13 }, (_, i) => ({ id: `c1_${i + 1}`, number: i + 1, name: `ผู้สมัคร ส.ท. เขต 1 เบอร์ ${i + 1}` })),
+                2: Array.from({ length: 13 }, (_, i) => ({ id: `c2_${i + 1}`, number: i + 1, name: `ผู้สมัคร ส.ท. เขต 2 เบอร์ ${i + 1}` }))
+            },
+            scores: {}, 
+            staffAccounts: {},
+            loginZone: 1
+        };
 
-<div class="card">
-<h2>ติดต่อทีมงาน</h2>
-<p>โทร: 061-089-0675</p>
-<p>อีเมล: phonwat1555@gmail.com</p>
-<a class="btn" href="https://www.facebook.com" target="_blank">ติดตามทาง Facebook</a>
-</div>
+        let draftScores = JSON.parse(localStorage.getItem('electionMobileDraft')) || {};
+        let timerInterval = null;
+        let db, auth, appId, mainDocRef;
+        let isFirebaseReady = false;
 
-</section>
+        // --- TOAST NOTIFICATION ---
+        window.showToast = (title, desc, isAlert = false) => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bg = isAlert ? 'bg-rose-500' : 'bg-emerald-500';
+            const icon = isAlert ? 'fa-circle-exclamation' : 'fa-circle-check';
 
-<footer>
-<p>ได้รับสปอนเซอร์จาก มาโนชญ์ ชาวบางงาม</p>
-</footer>
+            toast.className = `${bg} text-white rounded-xl shadow-lg p-3 flex items-start gap-3 transform transition-all duration-300 translate-y-[-100%] opacity-0 pointer-events-auto min-w-[280px]`;
+            toast.innerHTML = `
+                <div class="mt-0.5"><i class="fa-solid ${icon} text-xl"></i></div>
+                <div class="flex-1">
+                    <h4 class="text-sm font-bold leading-tight">${title}</h4>
+                    <p class="text-xs mt-0.5 opacity-90">${desc}</p>
+                </div>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => toast.classList.remove('translate-y-[-100%]', 'opacity-0'), 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000); 
+        };
 
+        // --- MODAL SYSTEM ---
+        window.showModal = (icon, title, desc, confirmText, confirmClass, onConfirm) => {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 z-[100] flex items-center justify-center px-4 bg-slate-900/60 backdrop-blur-sm fade-in';
+            modal.innerHTML = `
+                <div class="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl transform scale-95 transition-transform duration-300">
+                    <div class="w-16 h-16 ${confirmClass.includes('rose') ? 'bg-rose-100 text-rose-500' : 'bg-emerald-100 text-emerald-500'} rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fa-solid ${icon} text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-black text-slate-800 mb-2">${title}</h3>
+                    <p class="text-slate-500 mb-6 text-sm">${desc}</p>
+                    <div class="flex gap-3">
+                        ${confirmText ? `<button onclick="this.closest('.fixed').remove()" class="flex-1 bg-slate-100 text-slate-600 font-bold py-3 rounded-xl">ยกเลิก</button>
+                        <button id="btn-modal-confirm" class="flex-1 ${confirmClass} text-white font-bold py-3 rounded-xl shadow-md">${confirmText}</button>` : 
+                        `<button onclick="this.closest('.fixed').remove()" class="w-full ${confirmClass} text-white font-bold py-3 rounded-xl shadow-md">ตกลง</button>`}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            setTimeout(() => modal.querySelector('div').classList.replace('scale-95', 'scale-100'), 10);
+            
+            if(confirmText) {
+                document.getElementById('btn-modal-confirm').onclick = () => {
+                    modal.remove();
+                    onConfirm();
+                };
+            }
+        };
+
+        // --- INIT FIREBASE ---
+        function initDefaultStaff() {
+            [1, 2].forEach(zone => {
+                let maxStations = zone === 1 ? 13 : 17;
+                for(let s=1; s<=maxStations; s++) {
+                    const key = `${zone}_${s}`;
+                    if (!state.staffAccounts[key]) {
+                        state.staffAccounts[key] = { name: `หน่วย ${s} (เขต ${zone})`, pin: `${zone}${s.toString().padStart(3, '0')}` };
+                    }
+                }
+            });
+        }
+
+        try {
+            let firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : myFirebaseConfig;
+            if (firebaseConfig) {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                appId = typeof __app_id !== 'undefined' ? __app_id : (firebaseConfig.projectId || 'default-app-id');
+                mainDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'election_db', 'main_state');
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (e) { console.error("Auth Error", e); }
+                };
+                initAuth();
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        isFirebaseReady = true;
+                        onSnapshot(mainDocRef, (snapshot) => {
+                            if (snapshot.exists()) {
+                                const data = snapshot.data();
+                                state.scores = data.scores || state.scores;
+                                state.isVotingOpen = data.isVotingOpen !== undefined ? data.isVotingOpen : true;
+                                state.stationLastUpdated = data.stationLastUpdated || {};
+                                state.stationSubmitCount = data.stationSubmitCount || {};
+                                state.stationClosed = data.stationClosed || {};
+                                if(state.activeTab !== 'login') renderApp();
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (e) { console.error("Firebase Setup Error", e); }
+
+        // --- TIMER ---
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimerUI, 1000);
+        }
+
+        function updateTimerUI() {
+            const timerEl = document.getElementById('staff-timer-display');
+            if (!timerEl || !state.currentUser) return;
+            
+            const key = `${state.currentUser.zone}_${state.currentUser.station}`;
+            const submitCount = state.stationSubmitCount[key] || 0;
+            
+            // Base classes for the timer bar
+            let baseClasses = "px-4 py-2 sm:py-2.5 flex justify-between items-center transition-colors shadow-inner w-full ";
+
+            if (state.stationClosed[key] || !state.isVotingOpen) {
+                timerEl.className = baseClasses + "bg-indigo-900 border-t border-indigo-950 text-indigo-200";
+                timerEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-medium text-xs sm:text-sm">
+                        <i class="fa-solid fa-lock"></i> ระบบล็อกการส่งคะแนน
+                    </div>
+                    <div class="bg-indigo-950 px-2 py-0.5 rounded text-[10px] sm:text-xs font-bold border border-indigo-800">
+                        ยอดส่งทั้งหมด ${submitCount} ครั้ง
+                    </div>
+                `;
+                return;
+            }
+
+            const lastTime = state.stationLastUpdated[key];
+            if (!lastTime) {
+                timerEl.className = baseClasses + "bg-amber-500 border-t border-amber-600 text-white";
+                timerEl.innerHTML = `
+                    <div class="font-bold text-xs sm:text-sm animate-pulse flex items-center gap-1.5">
+                        <i class="fa-solid fa-play"></i> เริ่มการรายงานผลครั้งแรก!
+                    </div>
+                    <div class="bg-amber-600 px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-bold shadow-sm border border-amber-400">
+                        รอข้อมูล
+                    </div>
+                `;
+                return;
+            }
+            
+            const elapsed = Date.now() - lastTime;
+            const remaining = (10 * 60 * 1000) - elapsed;
+            
+            if (remaining <= 0) {
+                timerEl.className = baseClasses + "bg-rose-500 border-t border-rose-600 text-white";
+                timerEl.innerHTML = `
+                    <div class="font-black text-sm sm:text-base animate-pulse flex items-center gap-1.5 drop-shadow-md">
+                        <i class="fa-solid fa-bell fa-shake text-lg"></i> เลยเวลารายงานผล!
+                    </div>
+                    <div class="bg-rose-700 px-2 py-1 rounded-lg text-xs font-bold shadow-sm border border-rose-400 flex items-center gap-1">
+                        <i class="fa-solid fa-paper-plane"></i> ส่งไปแล้ว ${submitCount} ครั้ง
+                    </div>
+                `;
+            } else {
+                const mins = Math.floor(remaining / 60000);
+                const secs = Math.floor((remaining % 60000) / 1000);
+                
+                if (mins < 3) {
+                    timerEl.className = baseClasses + "bg-amber-500 border-t border-amber-600 text-amber-50";
+                } else {
+                    timerEl.className = baseClasses + "bg-emerald-500 border-t border-emerald-600 text-emerald-50";
+                }
+
+                timerEl.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs sm:text-sm font-bold opacity-90"><i class="fa-regular fa-clock"></i> ส่งรอบถัดไปใน:</span>
+                        <span class="font-black text-white text-xl sm:text-2xl font-mono tracking-wider drop-shadow-md w-14 text-center">${mins}:${secs.toString().padStart(2, '0')}</span>
+                    </div>
+                    <div class="bg-black/20 px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold shadow-sm border border-white/20 flex items-center gap-1.5 backdrop-blur-sm">
+                        <i class="fa-solid fa-rotate text-[10px]"></i> ส่งแล้ว ${submitCount} ครั้ง
+                    </div>
+                `;
+            }
+        }
+
+        // --- LOGIC FUNCTIONS ---
+        window.handleDraftInput = (inputId, value) => {
+            draftScores[inputId] = value;
+            localStorage.setItem('electionMobileDraft', JSON.stringify(draftScores));
+        };
+
+        window.updateLoginZone = (val) => { state.loginZone = parseInt(val); renderApp(); };
+
+        window.login = () => {
+            const pin = document.getElementById('login-pin').value;
+            const zone = state.loginZone;
+            let matchedStation = null, matchedName = '';
+            
+            let maxStations = zone === 1 ? 13 : 17;
+            for (let s=1; s<=maxStations; s++) {
+                const acc = state.staffAccounts[`${zone}_${s}`];
+                if (acc && acc.pin === pin) { matchedStation = s; matchedName = acc.name; break; }
+            }
+
+            if (matchedStation !== null) {
+                draftScores = {}; localStorage.removeItem('electionMobileDraft');
+                state.currentUser = { role: 'staff', zone, station: matchedStation, name: matchedName };
+                
+                if (state.scores[`z${zone}_s${matchedStation}_eligible`] === undefined) {
+                    state.activeTab = 'staffInit';
+                } else {
+                    state.activeTab = 'input'; 
+                }
+                renderApp();
+            } else {
+                window.showToast('รหัสผ่านไม่ถูกต้อง', 'กรุณาตรวจสอบเขตและ PIN อีกครั้ง', true);
+            }
+        };
+
+        window.logout = () => { 
+            state.currentUser = null; 
+            state.activeTab = 'login'; 
+            if (timerInterval) clearInterval(timerInterval); 
+            renderApp(); 
+        };
+
+        window.saveInitEligible = async () => {
+            const eligible = parseInt(document.getElementById('init_eligible').value || 0);
+            if (eligible <= 0) return window.showToast('ข้อมูลไม่ถูกต้อง', 'กรุณากรอกผู้มีสิทธิ์ให้ถูกต้อง', true);
+
+            const { zone, station } = state.currentUser;
+            const key = `z${zone}_s${station}_eligible`;
+            
+            if (!state.scores) state.scores = {};
+            state.scores[key] = eligible;
+
+            if (isFirebaseReady) {
+                try {
+                    await updateDoc(mainDocRef, { [`scores.${key}`]: eligible });
+                } catch(e) {
+                    if (e.code === 'not-found') await setDoc(mainDocRef, { scores: { [key]: eligible } }, { merge: true });
+                }
+            }
+
+            window.showToast('สำเร็จ', 'บันทึกข้อมูลยอดผู้มีสิทธิ์แล้ว');
+            state.activeTab = 'input';
+            renderApp();
+        };
+
+        window.saveScores = (isFinal = false) => {
+            const { zone, station } = state.currentUser;
+            const eligibleVoters = parseInt(document.getElementById('input_eligible')?.value || 0);
+            
+            let mTotal = 0; 
+            state.mayorCandidates.forEach(c => mTotal += parseInt(document.getElementById(`input_m_${c.id}`)?.value || 0));
+            const mInvalid = parseInt(document.getElementById('input_m_invalid')?.value || 0);
+            const mNoVote = parseInt(document.getElementById('input_m_novote')?.value || 0);
+            const mTurnout = mTotal + mInvalid + mNoVote;
+
+            if (isFinal) {
+                if (eligibleVoters <= 0) return window.showToast('แจ้งเตือน', 'กรุณากรอกจำนวนผู้มีสิทธิ์เลือกตั้งให้ถูกต้อง', true);
+                if (mTurnout > eligibleVoters) return window.showModal('fa-triangle-exclamation', 'ข้อมูลขัดแย้ง', `ยอดผู้มาใช้สิทธิ์รวม (${mTurnout} คน) มากกว่าผู้มีสิทธิ์ (${eligibleVoters} คน) กรุณาตรวจสอบอีกครั้ง`, null, 'bg-rose-600');
+                
+                window.showModal('fa-lock', 'ยืนยันปิดหีบ?', 'หากยืนยันแล้วจะไม่สามารถแก้ไขคะแนนของหน่วยนี้ได้อีก', 'ยืนยันปิดหีบ', 'bg-rose-600', () => executeSave(true));
+            } else {
+                if (mTurnout > eligibleVoters && eligibleVoters > 0) window.showToast('ข้อควรระวัง', 'ผู้ใช้สิทธิ์เกินกว่าผู้มีสิทธิ์ กรุณาตรวจสอบ', true);
+                executeSave(false);
+            }
+        };
+
+        async function executeSave(isFinal) {
+            if (!state.isVotingOpen) return;
+            const { zone, station } = state.currentUser;
+            const stationKey = `${zone}_${station}`;
+            
+            const btnSave = document.getElementById('btn-save');
+            if(btnSave) { btnSave.disabled = true; btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> บันทึก...'; }
+
+            let newScores = {};
+            newScores[`z${zone}_s${station}_eligible`] = parseInt(document.getElementById('input_eligible')?.value || 0);
+            state.mayorCandidates.forEach(c => newScores[`z${zone}_s${station}_candidate_${c.id}`] = parseInt(document.getElementById(`input_m_${c.id}`)?.value || 0));
+            state.councilCandidates[zone].forEach(c => newScores[`z${zone}_s${station}_candidate_${c.id}`] = parseInt(document.getElementById(`input_c_${c.id}`)?.value || 0));
+            ['mayor_novote', 'mayor_invalid', 'council_novote', 'council_invalid'].forEach(f => newScores[`z${zone}_s${station}_${f}`] = parseInt(document.getElementById(`input_${f.charAt(0)}_${f.split('_')[1]}`)?.value || 0));
+            
+            const nowMs = Date.now();
+            const newCount = (state.stationSubmitCount[stationKey] || 0) + 1;
+            
+            Object.assign(state.scores, newScores);
+            state.stationLastUpdated[stationKey] = nowMs;
+            state.stationSubmitCount[stationKey] = newCount;
+            if (isFinal) state.stationClosed[stationKey] = true;
+
+            let dotUpdates = {};
+            Object.keys(newScores).forEach(key => dotUpdates[`scores.${key}`] = newScores[key]);
+            dotUpdates[`stationLastUpdated.${stationKey}`] = nowMs;
+            dotUpdates[`stationSubmitCount.${stationKey}`] = newCount;
+            if (isFinal) dotUpdates[`stationClosed.${stationKey}`] = true;
+
+            if (isFirebaseReady) {
+                try { await updateDoc(mainDocRef, dotUpdates); } 
+                catch (e) { if (e.code === 'not-found') await setDoc(mainDocRef, { scores: newScores, stationLastUpdated: { [stationKey]: nowMs }, stationSubmitCount: { [stationKey]: newCount }, stationClosed: isFinal ? { [stationKey]: true } : {} }); }
+            }
+
+            draftScores = {}; localStorage.removeItem('electionMobileDraft');
+            
+            if (isFinal) {
+                renderApp();
+                window.showModal('fa-box-archive', 'ปิดหีบสำเร็จ', 'ส่งข้อมูลรอบสุดท้ายเรียบร้อยแล้ว ปิดการแก้ไขหน่วยนี้', null, 'bg-indigo-600');
+            } else {
+                window.showToast('บันทึกสำเร็จ', `ส่งข้อมูลการนับครั้งที่ ${newCount} เรียบร้อย`);
+                if(btnSave) { btnSave.disabled = false; btnSave.innerHTML = '<i class="fa-solid fa-save"></i> บันทึกชั่วคราว'; }
+            }
+        }
+
+        // --- RENDER UI ---
+        window.renderApp = function() {
+            const mainContent = document.getElementById('main-content');
+            const header = document.getElementById('main-header');
+            
+            if (state.activeTab === 'login') {
+                header.classList.add('hidden');
+                mainContent.innerHTML = `
+                    <div class="flex-1 flex flex-col justify-center px-6 py-12">
+                        <div class="text-center mb-8">
+                            <div class="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 rotate-3 shadow-sm border border-indigo-200">
+                                <i class="fa-solid fa-mobile-screen-button text-4xl -rotate-3"></i>
+                            </div>
+                            <h1 class="text-2xl font-black text-slate-800">ระบบกรอกคะแนน</h1>
+                            <p class="text-slate-500 text-sm mt-1">ประจำหน่วยเลือกตั้ง (สำหรับมือถือ)</p>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-2">เขตเลือกตั้ง</label>
+                                <select onchange="updateLoginZone(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-base font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none">
+                                    <option value="1" ${state.loginZone === 1 ? 'selected' : ''}>เขตเลือกตั้งที่ 1</option>
+                                    <option value="2" ${state.loginZone === 2 ? 'selected' : ''}>เขตเลือกตั้งที่ 2</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-2">รหัส PIN ประจำหน่วย</label>
+                                <input type="password" inputmode="numeric" pattern="[0-9]*" id="login-pin" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-2xl tracking-[0.5em] font-black focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="••••">
+                            </div>
+                            <button onclick="login()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-md transition-transform active:scale-95 text-lg mt-2">
+                                เข้าสู่ระบบ
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } 
+            else if (state.activeTab === 'staffInit') {
+                header.classList.remove('hidden');
+                document.getElementById('header-title').innerText = `หน่วย ${state.currentUser.station} เขต ${state.currentUser.zone}`;
+                mainContent.innerHTML = `
+                    <div class="p-4 flex-1 flex flex-col justify-center">
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 text-center">
+                            <div class="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fa-solid fa-users text-2xl"></i>
+                            </div>
+                            <h2 class="text-xl font-black text-slate-800 mb-1">ข้อมูลเปิดหีบ</h2>
+                            <p class="text-xs text-slate-500 mb-6">กรอกจำนวนผู้มีสิทธิ์เลือกตั้งทั้งหมดของหน่วยนี้</p>
+                            
+                            <div class="mb-6">
+                                <label class="block text-xs font-bold text-slate-700 mb-2 text-left">จำนวนผู้มีสิทธิ์ (คน)</label>
+                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="init_eligible" onfocus="this.select()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-3xl font-black text-indigo-700 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0">
+                            </div>
+                            
+                            <button onclick="saveInitEligible()" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 text-lg">
+                                เริ่มบันทึกคะแนน <i class="fa-solid fa-arrow-right ml-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            else if (state.activeTab === 'input') {
+                header.classList.remove('hidden');
+                startTimer();
+                
+                const { zone, station } = state.currentUser;
+                const key = `${zone}_${station}`;
+                document.getElementById('header-title').innerText = `หน่วย ${station} เขต ${zone}`;
+                
+                if (state.stationClosed[key] || !state.isVotingOpen) {
+                    mainContent.innerHTML = `
+                        <div class="flex-1 flex flex-col items-center justify-center p-6 text-center h-[70vh]">
+                            <div class="w-24 h-24 ${state.stationClosed[key] ? 'bg-indigo-100 text-indigo-500' : 'bg-rose-100 text-rose-500'} rounded-full flex items-center justify-center mb-6">
+                                <i class="fa-solid ${state.stationClosed[key] ? 'fa-box-archive' : 'fa-lock'} text-4xl"></i>
+                            </div>
+                            <h2 class="text-2xl font-black text-slate-800 mb-2">${state.stationClosed[key] ? 'ปิดหีบสมบูรณ์' : 'ระบบปิดชั่วคราว'}</h2>
+                            <p class="text-slate-500">${state.stationClosed[key] ? 'ขอบคุณสำหรับการส่งข้อมูลครับ<br>การแก้ไขถูกล็อกแล้ว' : 'ไม่สามารถส่งข้อมูลได้ในขณะนี้<br>โปรดรอแอดมินเปิดระบบ'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const eligibleVoters = draftScores['input_eligible'] !== undefined ? draftScores['input_eligible'] : (state.scores[`z${zone}_s${station}_eligible`] || '');
+
+                let html = `<div class="p-3 pb-32 space-y-4">`;
+
+                // Card: ผู้มีสิทธิ์
+                html += `
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+                        <div class="flex justify-between items-center gap-3">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-users text-indigo-500"></i>
+                                <span class="font-bold text-sm text-slate-700">ผู้มีสิทธิ์ (คน)</span>
+                            </div>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="input_eligible" value="${eligibleVoters}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-24 bg-slate-50 border border-slate-200 rounded-lg p-2 text-right text-xl font-black text-indigo-600 focus:ring-2 focus:ring-indigo-400 outline-none" placeholder="0">
+                        </div>
+                    </div>
+                `;
+
+                // Card: นายกเทศมนตรี
+                html += `<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><div class="bg-amber-50 px-4 py-2 border-b border-amber-100 flex items-center gap-2"><i class="fa-solid fa-medal text-amber-500"></i><h3 class="font-bold text-amber-800 text-sm">คะแนนนายกเทศมนตรี</h3></div><div class="p-3 space-y-3">`;
+                state.mayorCandidates.forEach(c => {
+                    const val = draftScores[`input_m_${c.id}`] !== undefined ? draftScores[`input_m_${c.id}`] : (state.scores[`z${zone}_s${station}_candidate_${c.id}`] || '');
+                    html += `
+                        <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <div class="w-10 h-10 bg-white rounded-lg shadow-sm border border-slate-200 flex items-center justify-center font-black text-xl text-slate-600 shrink-0">${c.number}</div>
+                            <div class="flex-1"><h4 class="font-bold text-xs leading-tight text-slate-800">${c.name}</h4></div>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="input_m_${c.id}" value="${val}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-20 bg-white border border-slate-300 rounded-lg p-2.5 text-right text-xl font-black text-amber-600 focus:ring-2 focus:ring-amber-400 outline-none" placeholder="0">
+                        </div>
+                    `;
+                });
+                html += `<div class="grid grid-cols-2 gap-2 mt-2">
+                    <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 flex justify-between items-center"><label class="text-[10px] font-bold text-slate-500">ไม่ประสงค์</label><input type="text" inputmode="numeric" pattern="[0-9]*" id="input_m_novote" value="${draftScores['input_m_novote'] !== undefined ? draftScores['input_m_novote'] : (state.scores[`z${zone}_s${station}_mayor_novote`] || '')}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-14 text-right bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-700 outline-none" placeholder="0"></div>
+                    <div class="bg-red-50 p-2 rounded-lg border border-red-100 flex justify-between items-center"><label class="text-[10px] font-bold text-red-500">บัตรเสีย</label><input type="text" inputmode="numeric" pattern="[0-9]*" id="input_m_invalid" value="${draftScores['input_m_invalid'] !== undefined ? draftScores['input_m_invalid'] : (state.scores[`z${zone}_s${station}_mayor_invalid`] || '')}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-14 text-right bg-white border border-red-200 rounded p-1.5 font-bold text-red-600 outline-none" placeholder="0"></div>
+                </div></div></div>`;
+
+                // Card: ส.ท.
+                html += `<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><div class="bg-blue-50 px-4 py-2 border-b border-blue-100 flex items-center gap-2"><i class="fa-solid fa-users text-blue-500"></i><h3 class="font-bold text-blue-800 text-sm">คะแนน ส.ท.</h3></div><div class="p-3 grid grid-cols-2 gap-2">`;
+                state.councilCandidates[zone].forEach(c => {
+                    const val = draftScores[`input_c_${c.id}`] !== undefined ? draftScores[`input_c_${c.id}`] : (state.scores[`z${zone}_s${station}_candidate_${c.id}`] || '');
+                    html += `
+                        <div class="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <div class="w-7 h-7 bg-white rounded shadow-sm border border-slate-200 flex items-center justify-center font-bold text-sm text-slate-600 shrink-0">${c.number}</div>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="input_c_${c.id}" value="${val}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-16 bg-white border border-slate-300 rounded p-1.5 text-right text-lg font-bold text-blue-600 focus:ring-2 focus:ring-blue-400 outline-none" placeholder="0">
+                        </div>
+                    `;
+                });
+                html += `</div><div class="p-3 pt-0 grid grid-cols-2 gap-2">
+                    <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 flex justify-between items-center"><label class="text-[10px] font-bold text-slate-500">ไม่ประสงค์</label><input type="text" inputmode="numeric" pattern="[0-9]*" id="input_c_novote" value="${draftScores['input_c_novote'] !== undefined ? draftScores['input_c_novote'] : (state.scores[`z${zone}_s${station}_council_novote`] || '')}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-14 text-right bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-700 outline-none" placeholder="0"></div>
+                    <div class="bg-red-50 p-2 rounded-lg border border-red-100 flex justify-between items-center"><label class="text-[10px] font-bold text-red-500">บัตรเสีย</label><input type="text" inputmode="numeric" pattern="[0-9]*" id="input_c_invalid" value="${draftScores['input_c_invalid'] !== undefined ? draftScores['input_c_invalid'] : (state.scores[`z${zone}_s${station}_council_invalid`] || '')}" oninput="handleDraftInput(this.id, this.value)" onfocus="this.select()" class="w-14 text-right bg-white border border-red-200 rounded p-1.5 font-bold text-red-600 outline-none" placeholder="0"></div>
+                </div></div>`;
+
+                html += `</div>`; // End container
+
+                // Sticky Bottom Bar
+                html += `
+                    <div class="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 p-3 pb-safe z-50 flex gap-2 shadow-[0_-5px_15px_-10px_rgba(0,0,0,0.1)]">
+                        <button onclick="saveScores(true)" class="w-1/3 bg-rose-100 text-rose-600 hover:bg-rose-200 font-bold py-3 rounded-xl text-xs flex flex-col items-center justify-center transition-colors active:scale-95">
+                            <i class="fa-solid fa-lock mb-0.5 text-sm"></i> ปิดหีบ
+                        </button>
+                        <button id="btn-save" onclick="saveScores(false)" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-base shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95">
+                            <i class="fa-solid fa-save text-lg"></i> บันทึกชั่วคราว
+                        </button>
+                    </div>
+                `;
+
+                mainContent.innerHTML = html;
+            }
+        }
+
+        window.onload = () => {
+            initDefaultStaff();
+            renderApp();
+        };
+
+    </script>
 </body>
 </html>
